@@ -66,6 +66,11 @@ A modern Fullstack Application featuring an Advanced Role-Based Access Control (
    ```bash
    uvicorn app.main:app --reload
    ```
+6. Seed the Database:
+   Run the seeder script to create a default `admin` user with the password `password123`.
+   ```bash
+   python seed.py
+   ```
 
 ### 3. Frontend Setup
 1. Navigate to the frontend directory:
