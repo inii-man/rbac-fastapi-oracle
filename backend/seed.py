@@ -14,7 +14,28 @@ from app.core.security import get_password_hash
 def seed_admin_user():
     db: Session = SessionLocal()
     try:
-        # Check if admin role exists
+        # 1. Define base permissions that are essential
+        essential_permissions = [
+            "user.view", "user.create", "user.edit", "user.delete",
+            "role.view", "role.create", "role.assign",
+            "permission.view"
+        ]
+        
+        # 2. Seed permissions if they don't exist
+        print("Ensuring essential permissions exist...")
+        from app.models.permission import Permission
+        
+        for perm_name in essential_permissions:
+            perm = db.execute(select(Permission).where(Permission.name == perm_name)).scalar_one_or_none()
+            if not perm:
+                perm = Permission(name=perm_name, description=f"Permission for {perm_name}")
+                db.add(perm)
+        db.commit()
+        
+        # 3. Fetch all permissions
+        all_permissions = db.execute(select(Permission)).scalars().all()
+        
+        # 4. Check if admin role exists
         admin_role = db.execute(select(Role).where(Role.name == "admin")).scalar_one_or_none()
         if not admin_role:
             print("Admin role not found. Creating admin role...")
@@ -23,11 +44,17 @@ def seed_admin_user():
             db.commit()
             db.refresh(admin_role)
             
-        # Check if admin user exists
+        # 5. Assign all permissions to admin role
+        print("Assigning all permissions to admin role...")
+        for perm in all_permissions:
+            if perm not in admin_role.permissions:
+                admin_role.permissions.append(perm)
+        db.commit()
+            
+        # 6. Check if admin user exists
         admin_user = db.execute(select(User).where(User.username == "admin")).scalar_one_or_none()
         if not admin_user:
             print("Admin user not found. Creating admin user...")
-            # Following the logic from the previous conversation about password updates
             hashed_password = get_password_hash("password123")
             admin_user = User(
                 username="admin",
