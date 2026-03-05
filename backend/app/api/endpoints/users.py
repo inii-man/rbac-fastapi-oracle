@@ -29,10 +29,10 @@ def create_user(user_in: UserCreate, db: Session = Depends(get_db), _ = Depends(
         is_active=True
     )
     
-    if user_in.role_id:
-        role = db.query(Role).filter(Role.id == user_in.role_id).first()
-        if role:
-            new_user.roles = [role]
+    role = db.query(Role).filter(Role.id == user_in.role_id).first()
+    if not role:
+        raise HTTPException(status_code=400, detail="Role not found")
+    new_user.roles = [role]
             
     db.add(new_user)
     db.commit()

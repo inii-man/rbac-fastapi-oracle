@@ -35,21 +35,41 @@ def seed_admin_user():
         # 3. Fetch all permissions
         all_permissions = db.execute(select(Permission)).scalars().all()
         
-        # 4. Check if admin role exists
-        admin_role = db.execute(select(Role).where(Role.name == "admin")).scalar_one_or_none()
-        if not admin_role:
-            print("Admin role not found. Creating admin role...")
-            admin_role = Role(name="admin", description="System Administrator")
-            db.add(admin_role)
-            db.commit()
-            db.refresh(admin_role)
+        # 4 & 5. Check and create roles (admin, supervisor, worker) and assign permissions
+        roles_data = {
+            "admin": {
+                "description": "System Administrator",
+                "permissions": essential_permissions
+            },
+            "supervisor": {
+                "description": "Supervisor Role",
+                "permissions": ["user.view", "user.create", "user.edit", "role.view", "permission.view"]
+            },
+            "worker": {
+                "description": "Worker Role",
+                "permissions": ["user.view"]
+            }
+        }
+        
+        created_roles = {}
+        for role_name, data in roles_data.items():
+            role = db.execute(select(Role).where(Role.name == role_name)).scalar_one_or_none()
+            if not role:
+                print(f"{role_name.capitalize()} role not found. Creating {role_name} role...")
+                role = Role(name=role_name, description=data["description"])
+                db.add(role)
+                db.commit()
+                db.refresh(role)
             
-        # 5. Assign all permissions to admin role
-        print("Assigning all permissions to admin role...")
-        for perm in all_permissions:
-            if perm not in admin_role.permissions:
-                admin_role.permissions.append(perm)
-        db.commit()
+            created_roles[role_name] = role
+            
+            print(f"Assigning permissions to {role_name} role...")
+            for perm in all_permissions:
+                if perm.name in data["permissions"] and perm not in role.permissions:
+                    role.permissions.append(perm)
+            db.commit()
+            
+        admin_role = created_roles["admin"]
             
         # 6. Check if admin user exists
         admin_user = db.execute(select(User).where(User.username == "admin")).scalar_one_or_none()
