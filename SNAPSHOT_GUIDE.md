@@ -12,6 +12,8 @@ Fitur **Snapshot Data** memungkinkan Anda mengambil *capture* data dari tabel da
 | **supervisor** | ✅ | ✅ (milik sendiri + publik) | ✅ | ✅ | ❌ |
 | **worker** | ❌ | ✅ (publik saja) | ✅ | ✅ | ❌ |
 
+> Permission yang dibutuhkan: `snapshot.view` (lihat), `snapshot.create` (buat), `snapshot.delete` (hapus)
+
 ---
 
 ## 🖥️ Cara Pakai via UI (Frontend)
@@ -35,7 +37,7 @@ Menu ini hanya muncul jika akun Anda memiliki permission `snapshot.view`.
    | **Source Table** | Nama tabel di database | `users` |
    | **Custom Query** | SQL kustom — jika kosong, pakai `SELECT * FROM <tabel>` | `SELECT id, username FROM users WHERE is_active = 1` |
    | **Format File** | `json` atau `csv` | `json` |
-   | **Akses Publik** | `Private` (hanya pemilik/role tertentu) atau `Public` (semua user) | `Private` |
+   | **Akses Publik** | `N` (hanya pemilik/role tertentu) atau `Y` (semua user) | `N` |
    | **Allowed Roles** | Role yang boleh akses, pisahkan koma | `admin,supervisor` |
 
 3. Klik **"Generate Snapshot"**
@@ -52,7 +54,7 @@ Di tabel utama, kolom **Status** menunjukkan kondisi snapshot:
 |---|---|
 | 🟡 `PENDING` | Sedang diproses di background |
 | 🟢 `COMPLETED` | Selesai, siap diakses |
-| 🔴 `FAILED` | Gagal (cek query atau nama tabel) |
+| 🔴 `FAILED` | Gagal (cek query atau nama tabel, lihat log server) |
 | ⚫ `EXPIRED` | Kadaluarsa (otomatis setelah 30 hari) |
 
 Klik tombol **"↻ Refresh"** untuk memperbarui daftar.
@@ -96,6 +98,7 @@ Semua endpoint membutuhkan header: `Authorization: Bearer <token>`
 ```http
 POST /api/snapshots
 Content-Type: application/json
+Authorization: Bearer <token>
 
 {
   "name": "Snapshot Users Maret 2026",
@@ -107,13 +110,31 @@ Content-Type: application/json
 }
 ```
 
+**Validasi field:**
+- `name` — wajib, min. 5 karakter, maks. 200 karakter
+- `source_table` — wajib, maks. 100 karakter
+- `source_query` — opsional; jika kosong akan pakai `SELECT * FROM <source_table>`
+- `file_format` — harus `"json"` atau `"csv"` (default: `"json"`)
+- `is_public` — harus `"Y"` atau `"N"` (default: `"N"`)
+- `allowed_roles` — opsional, comma-separated (contoh: `"admin,supervisor"`)
+
 **Response 201:**
 ```json
 {
   "id": 1,
   "snapshot_code": "SNAP-USERS-20260306082500",
+  "name": "Snapshot Users Maret 2026",
+  "description": null,
+  "source_table": "users",
+  "record_count": 0,
+  "file_size_bytes": 0,
+  "file_format": "json",
   "status": "PENDING",
-  ...
+  "created_at": "2026-03-06T08:25:00",
+  "completed_at": null,
+  "expires_at": "2026-04-05T08:25:00",
+  "is_public": "N",
+  "created_by": "admin"
 }
 ```
 
@@ -123,9 +144,29 @@ Content-Type: application/json
 
 ```http
 GET /api/snapshots/1
+Authorization: Bearer <token>
 ```
 
-Poll endpoint ini sampai `"status": "COMPLETED"`.
+Poll endpoint ini sampai `"status": "COMPLETED"`. Respons menggunakan format yang sama dengan response POST di atas.
+
+---
+
+### List Semua Snapshot
+
+```http
+GET /api/snapshots?snapshot_status=COMPLETED&source_table=users&page=1&page_size=20
+Authorization: Bearer <token>
+```
+
+**Query Parameters (semua opsional):**
+| Parameter | Tipe | Keterangan |
+|---|---|---|
+| `snapshot_status` | string | Filter berdasarkan status (`PENDING`, `COMPLETED`, `FAILED`, `EXPIRED`) |
+| `source_table` | string | Filter berdasarkan nama tabel |
+| `page` | int | Halaman (default: 1) |
+| `page_size` | int | Jumlah per halaman (default: 20) |
+
+> User non-admin hanya melihat snapshot milik sendiri, publik, atau yang sesuai role-nya.
 
 ---
 
@@ -133,6 +174,7 @@ Poll endpoint ini sampai `"status": "COMPLETED"`.
 
 ```http
 GET /api/snapshots/1/data?format=json
+Authorization: Bearer <token>
 ```
 
 **Response:**
@@ -156,17 +198,10 @@ GET /api/snapshots/1/data?format=json
 
 ```http
 GET /api/snapshots/1/data?format=download
+Authorization: Bearer <token>
 ```
 
-Response berupa binary file (JSON/CSV) — simpan dengan `Content-Disposition` header.
-
----
-
-### List Semua Snapshot
-
-```http
-GET /api/snapshots?status=COMPLETED&source_table=users&page=1&page_size=20
-```
+Response berupa binary file (JSON/CSV) — simpan dengan nama dari `Content-Disposition` header.
 
 ---
 
@@ -174,6 +209,12 @@ GET /api/snapshots?status=COMPLETED&source_table=users&page=1&page_size=20
 
 ```http
 DELETE /api/snapshots/1
+Authorization: Bearer <token>
+```
+
+**Response 200:**
+```json
+{ "success": true, "message": "Snapshot 1 deleted" }
 ```
 
 ---
@@ -182,6 +223,7 @@ DELETE /api/snapshots/1
 
 - Setiap snapshot otomatis **kadaluarsa dalam 30 hari** setelah dibuat
 - Cleanup task akan mengubah status menjadi `EXPIRED` dan **menghapus file** dari server
+- File disimpan di direktori `./data/snapshots/` (relatif terhadap root backend)
 - Untuk menjalankan cleanup secara manual (dev/testing):
 
 ```python
@@ -191,12 +233,30 @@ cleanup_expired_snapshots()
 
 ---
 
+## 🗄️ Catatan Oracle Database
+
+Model `DataSnapshot` didesain kompatibel dengan Oracle:
+
+| Aspek | Implementasi |
+|---|---|
+| **Auto-increment ID** | Menggunakan `Sequence("data_snapshots_id_seq")` eksplisit |
+| **Status kolom** | `VARCHAR(20)` dengan `CheckConstraint` (bukan ENUM native) |
+| **Indeks PK** | Tidak menggunakan `index=True` — Oracle otomatis buat indeks untuk PK |
+| **`is_public`** | Disimpan sebagai `VARCHAR(10)` dengan nilai `"Y"` atau `"N"` |
+| **Datetime** | Kolom `DateTime(timezone=True)` — perbandingan menggunakan naive UTC datetime |
+
+---
+
 ## ❗ Troubleshooting
 
 | Masalah | Penyebab | Solusi |
 |---|---|---|
 | Status tetap `PENDING` | Background task gagal | Cek log server di terminal uvicorn |
-| Status berubah ke `FAILED` | Query SQL salah / tabel tidak ada | Cek nama tabel dan sintaks query |
+| Status berubah ke `FAILED` | Query SQL salah / tabel tidak ada | Cek nama tabel dan sintaks query; error detail ada di kolom `description` |
 | Tombol "Lihat"/"↓" tidak muncul | Status bukan `COMPLETED` | Tunggu atau refresh halaman |
+| 400 Bad Request | Snapshot belum `COMPLETED` | Tunggu proses background selesai |
 | 403 Forbidden | Tidak punya akses ke snapshot | Minta admin ubah `allowed_roles` atau `is_public` |
-| 410 Gone | Snapshot sudah kadaluarsa | Buat snapshot baru |
+| 410 Gone | Snapshot sudah kadaluarsa (>30 hari) | Buat snapshot baru |
+| 500 Internal Server Error | File tidak ada di server | File mungkin terhapus manual; buat ulang snapshot |
+| ORA-01400 | Kolom NOT NULL tanpa value | Pastikan semua field wajib terisi saat membuat snapshot |
+| ORA-01408 | Index duplikat di Oracle | Jangan gunakan `index=True` pada kolom dengan `unique=True` atau PK |
