@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/AuthContext';
-import { Shield, Users, LayoutDashboard, Key, Settings, LogOut } from 'lucide-react';
+import { Shield, Users, LayoutDashboard, Key, Settings, LogOut, Database } from 'lucide-react';
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -14,6 +14,7 @@ export default function Sidebar() {
     { name: 'Users', path: '/users', icon: Users, permission: 'user.view' },
     { name: 'Roles', path: '/roles', icon: Shield, permission: 'role.view' },
     { name: 'Permissions', path: '/permissions', icon: Key, permission: 'permission.view' },
+    { name: 'Snapshots', path: '/snapshots', icon: Database, permission: 'snapshot.view' },
     { name: 'Worker Page', path: '/worker', icon: Settings, permission: 'worker.access' },
   ];
 

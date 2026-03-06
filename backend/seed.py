@@ -18,7 +18,11 @@ def seed_admin_user():
         essential_permissions = [
             "user.view", "user.create", "user.edit", "user.delete",
             "role.view", "role.create", "role.assign",
-            "permission.view"
+            "permission.view",
+            # Hari 5 - Snapshot
+            "snapshot.view", "snapshot.create", "snapshot.delete",
+            # Hari 5 - Monitoring
+            "view_monitoring",
         ]
         
         # 2. Seed permissions if they don't exist
@@ -43,11 +47,15 @@ def seed_admin_user():
             },
             "supervisor": {
                 "description": "Supervisor Role",
-                "permissions": ["user.view", "user.create", "user.edit", "role.view", "permission.view"]
+                "permissions": [
+                    "user.view", "user.create", "user.edit",
+                    "role.view", "permission.view",
+                    "snapshot.view", "snapshot.create",
+                ]
             },
             "worker": {
                 "description": "Worker Role",
-                "permissions": ["user.view"]
+                "permissions": ["user.view", "snapshot.view"]
             }
         }
         
